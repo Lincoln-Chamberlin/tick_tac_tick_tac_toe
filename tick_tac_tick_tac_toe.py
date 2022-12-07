@@ -1,7 +1,9 @@
-"""A 2 player game of Tick Tac Tick Tac Toe
+"""
+A 2 player game of Tick Tac Tick Tac Toe
 
 Project Name: Tick Tac Tick Tac Toe
 Author: Lincoln Chamberlin
+Created: 8/2022
 
 Game is played on a 3x3 grid of 3x3 playfields.
 Each 3x3 grid acts like a game of tick tac toe.
@@ -15,17 +17,20 @@ If the designated board is complete (is a cat's game or someone won)
 then you may play anywhere.
 
 the game is won by the winner of the big board.
+
 """
 
 from __future__ import annotations
+
 import random
-import turtle
+import time  # pylint: disable=unused-import
 import tkinter  # pylint: disable=unused-import
+import turtle
 
-
-WIDTH = 800
-HEIGHT = 800
-SIZE = min(WIDTH, HEIGHT)
+SIZE = 600
+WIDTH = SIZE
+HEIGHT = SIZE
+# SIZE = min(WIDTH, HEIGHT)
 BOARD_SIZE = 3
 LINE_WIDTH_THIN = 2  # used for drawing the boards
 LINE_WIDTH_THICK = 10  # used for drawing the Xs and Os
@@ -37,11 +42,13 @@ BOARD_OFFSET_FACTOR = 0.9
 OUTER_BOARD_OFFSET_FACTOR = 0.9
 
 DEBUG_SHOW_HITBOXES = False
+# DEBUG_SHOW_HITBOXES = True
 DEBUG_SHOW_TURTLE = False
+# DEBUG_SHOW_TURTLE = True
 
 # print(dir(screen._canvas))
 
-random.seed("woo")
+# random.seed("woo")
 
 
 class Window:
@@ -63,6 +70,8 @@ class Window:
         self.pen = turtle.Turtle()
         self.pen.color(PEN_COLOR)
 
+        self.screen.onscreenclick(self.on_mouse_click)
+
         self.pen.penup()
         self.pen.speed(0)  # disable anamiations for the turtle
         self.pen.pensize(2)  # defualt pensize
@@ -83,7 +92,6 @@ class Window:
             s=-size,
             size=2 * size,
         )
-        print("here")
 
         hitbox = Board.shrink_hitbox(None, hitbox, OUTER_BOARD_OFFSET_FACTOR)
 
@@ -227,7 +235,14 @@ class Window:
         game_state.window.draw_board(board)
 
         game_state.window.screen.update()
-        turtle.done()
+
+    def on_mouse_click(self, x, y) -> None:  # pylint: disable=invalid-name
+        """called when the user clicks on the screen"""
+
+        # time.sleep(1)
+
+        # self.draw_point([x, y])
+        self.game_state.game_loop((x, y))
 
 
 class Cell:
@@ -235,34 +250,56 @@ class Cell:
 
     hitbox: dict
     owner = "*"
-    # parent: Board | None
+    parent: Board | None
     game_state: GameState
     location: None | tuple[int]
 
-    def __init__(self, game_state, hitbox, location) -> None:
+    def __init__(self, game_state, parent, hitbox, location) -> None:
 
         self.game_state = game_state
+        self.parent = parent
         self.hitbox = self.validate_hitbox(hitbox)
         self.location = location
 
         if DEBUG_SHOW_HITBOXES:
             self.game_state.window.outline_hitbox(hitbox)
 
-        symbols = ["X", "O", "*"]
-        self.owner = random.choice(symbols)
+        # symbols = ["X", "O", "*"]
+        # self.owner = random.choice(symbols)
+        self.owner = random.choice("*")
 
-    # def __str__(self) -> str:
-    #     return 'A cell'
+    def __str__(self) -> str:
+        return f"Cell {self.location} in board {self.parent.location} is a {self.owner}"
 
-    # def in_hitbox(self,location):
-    #     '''return true if the given location is inside the hitbox for this object'''
-    #     if location[0] > self.bottom_right[0] \
-    #             and location[1] > self.bottom_right[1] \
-    #             and location[0] < self.top_left[0] \
-    #             and location[1] < self.top_left[1]:
-    #         return True
-    #     else:
-    #         return False
+    def __repr__(self) -> str:
+        return str(self)
+
+    def apply_owner(self, new_owner) -> bool:
+        """
+        apply owner to this cell, return True if sucsesful return False if cell was already full"""
+        if self.owner == "*":
+            self.owner = new_owner
+            return True
+        else:
+            return False
+
+    def is_playable(self) -> bool:
+        """return true if a move can be played, return false if there is no leagal move"""
+
+        return self.owner == "*"
+
+    # hitbox utilities
+    def in_hitbox(self, location) -> bool:
+        """return true if the given location is inside the hitbox for this object"""
+        if (
+            location[0] > self.hitbox["w"]
+            and location[0] < self.hitbox["e"]
+            and location[1] > self.hitbox["s"]
+            and location[1] < self.hitbox["n"]
+        ):
+            return True
+        else:
+            return False
 
     def validate_hitbox(self, hitbox: dict) -> dict[int]:
         """validate a hitbox is not malformed then return it, error otherwise"""
@@ -323,10 +360,6 @@ class Cell:
             size=new_size,
         )
 
-        # self.outline_hitbox(new_hitbox)
-        # self.draw_point([new_hitbox["w"], new_hitbox["s"]])
-        # self.draw_point([old_hitbox["w"], old_hitbox["s"]])
-
         return new_hitbox
 
     def divide_hitbox(
@@ -358,8 +391,10 @@ class Board(Cell):
     board_size: int
     is_top: bool
 
-    def __init__(self, game_state, hitbox, location, board_size, is_top) -> None:
-        Cell.__init__(self, game_state, hitbox, location)
+    def __init__(
+        self, game_state, parent, hitbox, location, board_size, is_top
+    ) -> None:
+        Cell.__init__(self, game_state, parent, hitbox, location)
         # ,top_left,bottom_right
         self.board_size = board_size
         self.is_top = is_top
@@ -372,6 +407,7 @@ class Board(Cell):
                     self.cell_array[x].append(
                         Board(
                             game_state,
+                            self,
                             self.divide_hitbox(x, y, BOARD_OFFSET_FACTOR),
                             (x, y),
                             board_size,
@@ -382,16 +418,17 @@ class Board(Cell):
                     self.cell_array[x].append(
                         Cell(
                             game_state,
+                            self,
                             self.divide_hitbox(x, y, CELL_OFFSET_FACTOR),
                             (x, y),
                         )
                     )
 
-    # def __str__(self) -> str:
-    #     if self.is_top:
-    #         return 'The top board'
-    #     else:
-    #         return 'A suboard'
+    def __str__(self) -> str:
+        if self.is_top:
+            return "The top board"
+        else:
+            return f"Subboard {self.location}"
 
     def get_cell(self, x, y) -> Board:  # pylint: disable=invalid-name
         """get the cell located at x,y"""
@@ -406,6 +443,94 @@ class Board(Cell):
 
         return cell_list
 
+    def is_playable(self) -> bool:
+        """return true if a move can be played, return false if there is no leagal move"""
+
+        if self.owner != "*":
+            return False
+
+        # make sure there is at least one playable cell
+        playable = False
+        for cell in self.get_all_cells():
+            if cell.is_playable():
+                playable = True
+
+        return playable
+
+    def get_clicked_board(self, location) -> Board | None:
+        """take in a location and return the either a Cell or None"""
+
+        if self.owner != "*":
+            return None
+            # pass
+
+        for cell in self.get_all_cells():
+            if cell.in_hitbox(location):
+                return cell
+
+        return None
+
+    def all_same_owner(self, cell_list: list[Cell]) -> str | None:
+        """if all elements are the same then it will return that, otherwise return None"""
+
+        owner = cell_list[0].owner
+        if owner == "*":
+            return None
+
+        for cell in cell_list:
+
+            # print(cell)
+            if cell.owner != owner:
+                return None
+
+        return owner
+
+    def find_board_winner(self) -> str | None:
+        """find the winner if the game"""
+
+        # print("here at find_board_winner")
+
+        if self.owner != "*":
+            return self.owner
+
+        cell_array = self.cell_array
+
+        winner = None
+        # test rows
+        for row in cell_array:
+            # is there a winner for this row, if so the board is theirs
+            winner = self.all_same_owner(row) or winner
+
+        # test columns
+        for column in zip(*cell_array):
+            # is there a winner for this row, if so the board is theirs
+            winner = self.all_same_owner(column) or winner
+
+        # test diagonals
+        diagonal1 = []
+        diagonal2 = []
+        for i in range(len(cell_array)):  # pylint: disable=consider-using-enumerate
+            diagonal1 += [cell_array[i][i]]
+            diagonal2 += [cell_array[i][len(cell_array) - i - 1]]
+
+        # is there a winner for this row, if so the board is theirs
+        winner = self.all_same_owner(diagonal1) or winner
+        winner = self.all_same_owner(diagonal2) or winner
+
+        # print("winner", winner)
+        return winner
+
+    def apply_board_winner(self) -> str | None:
+        """find and apply the winner of the board"""
+
+        # print(self)
+
+        winner = self.find_board_winner()
+
+        if winner:
+            self.owner = winner
+        return winner
+
 
 class GameState:
     """contains full data for gamedata"""
@@ -413,6 +538,7 @@ class GameState:
     board_size = BOARD_SIZE
     board: Board
     window: Window
+    playable_subboard: tuple[int] | None
     player = "X"
 
     def __init__(self) -> None:
@@ -420,23 +546,89 @@ class GameState:
         self.window = Window(self)
 
         self.board = Board(
-            self, self.window.create_window_hitbox(), None, self.board_size, True
+            self, None, self.window.create_window_hitbox(), None, self.board_size, True
         )
+
+        self.playable_subboard = (1, 2)
         self.player = "X"
 
     def draw(self) -> None:
         """draw gameboard as it exists now"""
         self.window.draw_all()
 
+    def swap_player(self) -> str:
+        """swap the player between X and O"""
+        if self.player == "X":
+            self.player = "O"
+        else:
+            self.player = "X"
+
+        return self.player
+
+    def check_legal_subboard(self, subboard: Board) -> bool:
+        """
+        check if the clicked subboard is a legal move, return True if it is and False otherwise"""
+
+        if self.playable_subboard is None:
+            return True
+        return subboard.location == self.playable_subboard
+
+    def update_legal_subboard(self, cell: Cell) -> None:
+        """update where the next subboard is allowed"""
+
+        location = cell.location
+        next_subboard = self.board.cell_array[location[0]][location[1]]
+        if next_subboard.is_playable():
+            self.playable_subboard = location
+        else:
+            self.playable_subboard = None
+
+    def game_loop(self, location) -> None:  # pylint: disable=invalid-name
+        """called when the user clicks on the screen"""
+
+        try:
+            # determine if the player clicked something
+            subboard = self.board.get_clicked_board(location)
+            if not self.check_legal_subboard(subboard):
+                raise AttributeError
+            cell = subboard.get_clicked_board(location)
+            if cell.owner != "*":
+                # raise Exception("ExistingOwner")
+                raise AttributeError
+        except AttributeError:
+            # attribute error will occer if either there is no cell at the click location
+            # the first raise will occer if the chosen subboard is not leagal
+            # the 2nd raise will occer if there is alreadly a piece at that loction
+            return
+        # if the cell was placed, then swap the players
+
+        cell.apply_owner(self.player)
+        self.swap_player()
+
+        self.draw()
+
+        # print("draw1")
+        # if the sub board has a winner, wait 1 sec then draw it
+        if subboard.apply_board_winner():
+            # print("redrawing")
+            time.sleep(1)
+            self.draw()
+
+            # if self.board.apply_board_winner():
+            #     time.sleep(1)
+            #     self.draw()
+
+        self.update_legal_subboard(cell)
+
 
 def main() -> None:
     "main"
 
-    # write_header()
-
     game_state = GameState()
 
     game_state.draw()
+
+    turtle.done()
 
 
 if __name__ == "__main__":
