@@ -20,6 +20,17 @@ the game is won by the winner of the big board.
 
 """
 
+# _ TODO _
+# display player to go
+# display something like 'you must go in shaded reagon' when the player 
+#      clicks outside the shaded reagon
+# display a you win message when a player wins
+# detect a cats-game on the main board
+# display rules on game start
+# upgrade from trutle to a more profesional graphics library
+
+
+
 from __future__ import annotations
 
 import random
@@ -40,6 +51,8 @@ O_COLOR = "blue"
 CELL_OFFSET_FACTOR = 0.9
 BOARD_OFFSET_FACTOR = 0.9
 OUTER_BOARD_OFFSET_FACTOR = 0.9
+BACKGROUND_COLOR = "lightgray"
+SHADED_COLOR = "darkgray"
 
 DEBUG_SHOW_HITBOXES = False
 # DEBUG_SHOW_HITBOXES = True
@@ -134,6 +147,38 @@ class Window:
 
         return hitbox
 
+    def wipe_screen(self) -> None:
+        """reset the screen to a black slate"""
+
+        self.draw_square((-SIZE / 2, -SIZE / 2), SIZE, shade_color=BACKGROUND_COLOR)
+
+    def draw_square(self, bottom_left, size, *, pen_color=None, shade_color=None):
+        """draw a shaded square"""
+
+        pen = self.pen
+
+        pen.goto(bottom_left)
+        pen.seth(90)
+
+        if shade_color:
+            pen.fillcolor(shade_color)
+            pen.begin_fill()
+        else:
+            pen.end_fill()
+
+        if pen_color:
+            pen.pencolor(pen_color)
+            pen.down()
+        else:
+            pen.up()
+
+        for _ in range(4):
+            pen.forward(size)
+            pen.right(90)
+
+        pen.end_fill()
+        pen.up()
+
     def draw_grid(self, hitbox, board_size) -> None:
         "draw the grid for the playfield"
 
@@ -169,6 +214,7 @@ class Window:
 
         self.pen.pensize(LINE_WIDTH_THICK)
         self.pen.color(color)
+        self.pen.seth(0)
 
         self.pen.goto(hitbox["w"] + offset, hitbox["s"] + offset)
         self.pen.down()
@@ -189,11 +235,11 @@ class Window:
         # hitbox = self.center_size_to_hitbox(center, size)
 
         color = O_COLOR
-
         radius = hitbox["size"] / 2 - LINE_WIDTH_THICK / 2
 
         self.pen.pensize(LINE_WIDTH_THICK)
         self.pen.color(color)
+        self.pen.seth(0)
 
         self.pen.goto(
             hitbox["w"] + hitbox["size"] / 2,
@@ -207,32 +253,66 @@ class Window:
         self.pen.pensize(LINE_WIDTH_THIN)
         self.pen.color(PEN_COLOR)
 
+    def draw_text(self, text: str, center=False) -> None:
+        """write the text to the board"""
+
     def draw_board(self, board: Board) -> None:
-        """Print the board 'board'"""
+        """Print the cell 'board'"""
 
-        self.draw_grid(board.hitbox, board.board_size)
+        if board.owner == "X":
+            self.draw_x(board.hitbox)
+        elif board.owner == "O":
+            self.draw_o(board.hitbox)
 
-        for cell in board.get_all_cells():
-
-            if cell.owner == "X":
-                self.draw_x(cell.hitbox)
-            elif cell.owner == "O":
-                self.draw_o(cell.hitbox)
-            elif isinstance(cell, Board):
+        elif isinstance(board, Board):
+            self.draw_grid(board.hitbox, board.board_size)
+            for cell in board.get_all_cells():
                 self.draw_board(cell)
 
-        # update the screen with the new board
-        # needed because of the tracer command at the top
-        # self.screen.update()
+    # def draw_board(self, board: Board) -> None:
+    #     """Print the board 'board'"""
+
+    #     self.draw_grid(board.hitbox, board.board_size)
+
+    #     for cell in board.get_all_cells():
+
+    #         if cell.owner == "X":
+    #             self.draw_x(cell.hitbox)
+    #         elif cell.owner == "O":
+    #             self.draw_o(cell.hitbox)
+    #         elif isinstance(cell, Board):
+    #             self.draw_board(cell)
+
+    #     # update the screen with the new board
+    #     # needed because of the tracer command at the top
+    #     # self.screen.update()
+
+    def shade_playable_subboard(self) -> None:
+        """find the playable subboard and shade it,
+        if the player can play anywhere then shade everything"""
+
+        subboard_index = self.game_state.playable_subboard
+        if subboard_index:
+            subboard = self.game_state.board.get_cell_by_index(subboard_index)
+        else:
+            subboard = self.game_state.board
+        hitbox = subboard.hitbox
+        self.draw_square(
+            bottom_left=(hitbox["w"], hitbox["s"]),
+            size=hitbox["size"],
+            shade_color=SHADED_COLOR,
+        )
 
     def draw_all(self) -> None:
         """draw everything"""
 
         game_state = self.game_state
-
         board = game_state.board
 
-        game_state.window.draw_board(board)
+        self.wipe_screen()
+        if self.game_state.board.owner == "*":
+            self.shade_playable_subboard()
+        self.draw_board(board)
 
         game_state.window.screen.update()
 
@@ -246,7 +326,7 @@ class Window:
 
 
 class Cell:
-    """contains information and mothods for a single cell, including managing its hitbox"""
+    """contains information and mothods for a single cell, primarly managing its hitbox"""
 
     hitbox: dict
     owner = "*"
@@ -457,6 +537,11 @@ class Board(Cell):
 
         return playable
 
+    def get_cell_by_index(self, board_index):
+        """return the subboard at board_index"""
+
+        return self.cell_array[board_index[0]][board_index[1]]
+
     def get_clicked_board(self, location) -> Board | None:
         """take in a location and return the either a Cell or None"""
 
@@ -549,7 +634,7 @@ class GameState:
             self, None, self.window.create_window_hitbox(), None, self.board_size, True
         )
 
-        self.playable_subboard = (1, 2)
+        self.playable_subboard = (2, 2)
         self.player = "X"
 
     def draw(self) -> None:
@@ -596,7 +681,7 @@ class GameState:
                 # raise Exception("ExistingOwner")
                 raise AttributeError
         except AttributeError:
-            # attribute error will occer if either there is no cell at the click location
+            # attribute error will occer if there is no cell at the click location
             # the first raise will occer if the chosen subboard is not leagal
             # the 2nd raise will occer if there is alreadly a piece at that loction
             return
@@ -604,21 +689,21 @@ class GameState:
 
         cell.apply_owner(self.player)
         self.swap_player()
-
+        self.update_legal_subboard(cell)
         self.draw()
 
         # print("draw1")
         # if the sub board has a winner, wait 1 sec then draw it
         if subboard.apply_board_winner():
             # print("redrawing")
+            self.update_legal_subboard(cell)
             time.sleep(1)
             self.draw()
 
-            # if self.board.apply_board_winner():
-            #     time.sleep(1)
-            #     self.draw()
-
-        self.update_legal_subboard(cell)
+            if self.board.apply_board_winner():
+                self.update_legal_subboard(cell)
+                time.sleep(1)
+                self.draw()
 
 
 def main() -> None:
